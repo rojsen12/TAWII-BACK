@@ -1,49 +1,62 @@
-import  UserModel  from '../schemas/user.schema';
-import {IUser} from "../models/user.model";
+import UserModel from '../schemas/user.schema';
+import bcrypt from 'bcrypt';
 
-class UserService {
-   public async createNewOrUpdate(user: IUser) {
-       console.log(user)
-       try {
-           if (!user._id) {
-               const dataModel = new UserModel(user);
-               return await dataModel.save();
-           } else {
-               return await UserModel.findByIdAndUpdate(user._id, { $set: user }, { new: true });
-           }
-       } catch (error) {
-           console.error('Wystąpił błąd podczas tworzenia danych:', error);
-           throw new Error('Wystąpił błąd podczas tworzenia danych');
-       }
-   }
+class UserService{
+    private saltRounds =10;
+    public async login(email:string,password: string){
+        try{
+            const user = await this.getByEmailOrName(email);
+            if(!user){
+                throw new Error('User not found');
+            }
 
-   public async getByEmailOrName(name: string) {
-    try {
-        const result = await UserModel.findOne({ $or: [{ email: name }, { name: name }] });
-        if (result) {
-            return result;
+            const isPasswordValid = await bcrypt.compare(password, user.password);
+            if (!isPasswordValid){
+                throw new Error('Invalid')
+            }
+            return user;
+        } catch (e) {
+            console.error('Login failed: ', e);
+            throw new Error('Invalid credentials');
         }
-    } catch (error) {
-        console.error('Wystąpił błąd podczas pobierania danych:', error);
-        throw new Error('Wystąpił błąd podczas pobierania danych');
     }
-}
 
-    public async getById(userId: string) {
+    public async getByEmailOrName(name: string) {
         try {
-            const user = await UserModel.findById(userId);
-            if (user) {
-                return user;
-            } else {
-                throw new Error('Użytkownik nie znaleziony');
+            let result = await UserModel.findOne({email: name});
+
+            if(!result){
+                result = await UserModel.findOne({name: name});
+            }
+
+            if (result) {
+                return result;
             }
         } catch (error) {
-            console.error('Wystąpił błąd podczas pobierania użytkownika po ID:', error);
-            throw new Error('Wystąpił błąd podczas pobierania użytkownika');
+            console.error('Wystąpił błąd podczas pobierania danych:', error);
+            throw new Error('Wystąpił błąd podczas pobierania danych');
         }
     }
-    
+
+    public async createNewUser(email: string,name: string,password: string){
+        try{
+            const existingUser = await UserModel.findOne({ $or: [{ email: name }, { name: name }] })
+            if (existingUser){
+                throw new Error("User with this email exists")
+            }
+
+            const hashedPassword = await bcrypt.hash(password, this.saltRounds);
+            const newUser = new UserModel({
+                email,
+                name,
+                password: hashedPassword
+            });
+            await newUser.save();
+            return newUser;
+        } catch (error) {
+            console.error("Error creating new user: ", error)
+        }
+    }
 }
 
 export default UserService;
-

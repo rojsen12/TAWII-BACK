@@ -1,23 +1,24 @@
-import Controller from '../interfaces/controller.interface';
-import {Request, Response, NextFunction, Router} from 'express';
+import { Request, Response, Router } from 'express';
 import path from 'path';
+import Controller from '../interfaces/controller.interface';
 
 class IndexController implements Controller {
-   public path = '/*';
-   public router = Router();
+    public path = '/home';
+    public router = Router();
 
-   constructor() {
-       this.initializeRoutes();
-   }
+    constructor() {
+        this.initializeRoutes();
+    }
 
-   private initializeRoutes() {
-       this.router.get(this.path, this.serveIndex);
-   }
+    public initializeRoutes() {
+        this.router.get(this.path, this.serveIndex);
+    }
 
-   private serveIndex = async (request: Request, response: Response) => {
-       response.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
-   }
+    private serveIndex = (request: Request, response: Response) => {
+        const indexPath = path.resolve(__dirname, '..', 'public', 'index.html');
+        response.setHeader('Cache-Control', 'no-store');
+        response.sendFile(indexPath);
+    }
 }
 
 export default IndexController;
-

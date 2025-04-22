@@ -2,7 +2,9 @@ import { Request, Response, NextFunction, Router, query } from 'express';
 import { checkPostCount } from '../middlewares/checkPostCount.middleware';
 import DataService from '../modules/services/data.service';
 import { Types } from 'mongoose';
+import { Rating} from "../modules/models/rating.model";
 import Joi from 'joi';
+
 
 let testArr = [4, 5, 6, 3, 5, 3, 7, 5, 13, 5, 6, 4, 3, 6, 3, 6];
 
@@ -16,154 +18,125 @@ class PostController {
     }
 
     private initializeRoutes() {
-
-        this.router.post(`${this.path}/:num`, checkPostCount, this.getData);  
-        this.router.post(`${this.path}`, this.addDataM);
-        this.router.get(`${this.path}/:id`, this.getByIdM);
-        this.router.get(`${this.path}`, this.getAllM);
-        this.router.delete(`${this.path}`, this.deleteByIdM);
-        this.router.delete(`${this.path}s`, this.deleteAllM); 
+        this.router.post(`${this.path}/:lessonId/rate`, this.addRatingM);
+        this.router.get(`${this.path}/:lessonId/rating`, this.getAverageRatingM);
+        this.router.get(`${this.path}/:lessonId/check`, this.checkRatingExists);
+        this.router.get(`${this.path}/:lessonId/fgdfgfdgfddfg/user/:userId`, this.getRatingByUserAndLesson);
     }
 
-    private getAll = async (request: Request, response: Response, next: NextFunction) => {
-        response.status(200).json(testArr);
-    }
-
-    private addData = async (request: Request, response: Response, next: NextFunction) => {
-        const { elem } = request.body;
-        const { id } = request.params;
-        const cleanedId = id.replace(':', ''); 
-        const index = parseInt(cleanedId); 
-        testArr.push(index);
-        response.status(200).json(testArr);
-    }
-
-    private getById = async (request: Request, response: Response, next: NextFunction) => {
-        const { id } = request.params; 
-        const cleanedId = id.replace(':', ''); 
-        const index = parseInt(cleanedId); 
-        console.log(index);
-
-        if (isNaN(index) || index < 0 || index >= testArr.length) {
-            return response.status(404).json({ message: 'Element not found' });
-        }
-        const element = testArr[index]; 
-        return response.status(200).json({element});
-    }
-
-    private deleteData = async (request: Request, response: Response, next: NextFunction) => {
-        const { id } = request.params;
-        const cleanedId = id.replace(':', ''); 
-        const index = parseInt(cleanedId);
-    
-        if (isNaN(index) || index < 0 || index >= testArr.length) {
-            return response.status(400).json({ error: 'Invalid index' });
-        }
-
-        const deletedElement = testArr.splice(index, 1);
-
-        response.status(200).json({
-            deletedElement: deletedElement[0],
-            updatedArray: testArr,
-        });
-    };
-
-    private getData = async (request: Request, response: Response, next: NextFunction) => {
-        const { num } = request.params;
-        const cleanedNum = num.replace(':', '');
-        const count = parseInt(cleanedNum, 10);
-    
-        if (isNaN(count) || count <= 0) {
-            return response.status(400).json({ error: 'Invalid number of elements' });
-        }
-        const result = testArr.slice(0, count);
-    
-        response.status(200).json({
-            data: result,
-        });
-    };
-
-    private getAllData = async (request: Request, response: Response, next: NextFunction) => {
-        response.status(200).json({data: testArr,});
-    };
-    
-    private deleteAllData = async (request: Request, response: Response, next: NextFunction) => {
-        testArr.length = 0;
-        response.status(200).json({
-            data: testArr, 
-        });
-    };
-
-    private addDataM = async (request: Request, response: Response, next: NextFunction) => {
-        const {title, text, image} = request.body;
-     
-        const schema = Joi.object({
-            title: Joi.string().required(),
-            text: Joi.string().required(),
-            image: Joi.string().uri().required()
-        });
+    private addRatingM = async (request: Request, response: Response, next: NextFunction) => {
         try {
-            const validatedData = await schema.validateAsync({title, text, image});
-            await this.dataService.createPost(validatedData);
-            response.status(200).json(validatedData);
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                console.error(`Validation Error: ${error.message}`);
-            } else {
-                console.error('An unknown error occurred');
+            const { lessonId } = request.params;
+            const { userId, score, comment } = request.body;
+
+            if (!lessonId || !userId || !score || score < 1 || score > 5) {
+                return response.status(400).json({ message: 'Nieprawidłowe dane oceny' });
             }
-            response.status(400).json({ error: 'Invalid input data.' });
-        }
-     }
 
-    private getByIdM = async (request: Request, response: Response, next: NextFunction) => {
-        const { id } = request.params;
-        const allData = await this.dataService.query({ _id: id });
-        response.status(200).json(allData);
-    }
+            const existingRating = await Rating.findOne({ lessonId, userId });
+            if (existingRating) {
+                return response.status(400).json({ message: 'Już oceniłeś tę lekcję' });
+            }
 
-    private deleteByIdM = async (request: Request, response: Response, next: NextFunction) => {
-        const { id } = request.params;
-        const allData = await this.dataService.deleteByID({ _id: id });
-        response.status(200).json(allData);
-    };
+            const rating = new Rating({
+                lessonId,
+                userId,
+                score,
+                comment
+            });
 
-    private deleteAllM = async (request: Request, response: Response, next: NextFunction) => {
-        try {
-            await this.dataService.deleteAllPosts();
-            response.status(204).send();
+            await rating.save();
+            response.status(201).json({ message: 'Ocena zapisana!', rating });
         } catch (error) {
-            next(error);
+            response.status(500).json({ message: 'Błąd serwera', error });
         }
     };
 
-
-    private getAllM = async (request: Request, response: Response, next: NextFunction) => {
+    private getRatingByUserAndLesson = async (request: Request, response: Response, next: NextFunction) => {
+        console.log("dgdffdgfdgdfgdfdfg");
         try {
-            const allData = await this.dataService.getAll();
-            response.status(200).json(allData);
-        } catch (error) {
-            console.log('eeee', error)
+            const { lessonId } = request.params;
+            const { userId } = request.params;
 
-            //console.error(`Validation Error: ${error.message}`);
-            response.status(400).json({ error: 'Invalid input data.' });
+            if (!lessonId || !userId) {
+                return response.status(400).json({ message: 'Brak wymaganych parametrów' });
+            }
+
+            console.log(`Szukam oceny dla lekcji: ${lessonId}, użytkownik: ${userId}`);
+
+            const rating = await Rating.findOne({ lessonId, userId: userId.toString() });
+
+            if (rating) {
+                const ratingResponse: any = {
+                    score: rating.score,
+                    comment: rating.comment
+                };
+
+                return response.status(200).json({
+                    found: true,
+                    rating: ratingResponse
+                });
+            } else {
+                return response.status(200).json({
+                    found: false,
+                    message: 'Nie znaleziono oceny dla tego użytkownika i lekcji'
+                });
+            }
+        } catch (error) {
+            console.error('Błąd podczas pobierania oceny:', error);
+            response.status(500).json({ message: 'Błąd serwera', error });
+        }
+    };
+
+    private checkRatingExists = async (request: Request, response: Response, next: NextFunction) => {
+        console.log('checkRatingExists called', request.params, request.query);
+        try {
+            const { lessonId } = request.params;
+            const { userId } = request.query;
+
+            if (!lessonId || !userId) {
+                return response.status(400).json({ message: 'Brak wymaganych parametrów' });
+            }
+
+            const existingRating = await Rating.findOne({ lessonId, userId: userId.toString() });
+
+            if (existingRating) {
+                return response.status(200).json({
+                    exists: true,
+                    rating: existingRating
+                });
+            } else {
+                return response.status(200).json({
+                    exists: false
+                });
+            }
+        } catch (error) {
+            response.status(500).json({ message: 'Błąd serwera', error });
+        }
+    };
+    async getAverageRatingM(req: Request, res: Response) {
+        try {
+            console.log("Żądanie do /api/post/:lessonId/rating");
+            const { lessonId } = req.params;
+            console.log("Otrzymane lessonId:", lessonId);
+
+            const ratings = await Rating.find({ lessonId });
+
+            if (!ratings.length) {
+                console.log("Brak ocen w bazie");
+                return res.status(404).json({ message: "Brak ocen dla tej lekcji" });
+            }
+
+            const averageRating = ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length;
+            console.log("Średnia ocena:", averageRating);
+
+            res.json({ averageRating });
+        } catch (error) {
+            console.error("Błąd pobierania oceny:", error);
+            res.status(500).json({ message: "Błąd serwera" });
         }
     }
 
-     private getElementById = async (request: Request, response: Response, next: NextFunction) => {
-        const { id } = request.params;
-        const allData = await this.dataService.query({_id: id});
-        response.status(200).json(allData);
-     }
-     
-     private removePost = async (request: Request, response: Response, next: NextFunction) => {
-        const { id } = request.params;
-        await this.dataService.deleteData({_id: id});
-        response.sendStatus(200);
-     };
-
-
-    
 }
 
 export default PostController;
